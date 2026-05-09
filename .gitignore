@@ -1,0 +1,6 @@
+/photo-importer
+/dist/
+/docs/*.html
+*.test
+*.out
+.vscode/

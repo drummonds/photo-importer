@@ -1,0 +1,11 @@
+project_type: binary
+name: photo-importer
+install: true
+remotes:
+  - origin
+  - github
+checks:
+  - task fmt
+  - task vet
+  - task test
+changelog_format: keepachangelog
