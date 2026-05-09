@@ -91,7 +91,7 @@ func Doctor(cfg config.Config) []Check {
 
 func summariseAdb(s string) string {
 	var devices []string
-	for _, line := range strings.Split(strings.TrimSpace(s), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(s), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "List of devices") || strings.HasPrefix(line, "*") {
 			continue

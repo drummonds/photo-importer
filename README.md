@@ -8,9 +8,15 @@ photo workflow and provides post-sync hooks for further processing.
 
 1. Auto-detects an MTP-mounted Android device under `/run/user/$UID/gvfs/`.
 2. Verifies the device is reachable via `adb devices` (warning only).
-3. Runs `rsync` with MTP-friendly options from `<mount>/Internal storage/DCIM`
-   to the configured destination.
-4. Runs any configured post-sync hook commands.
+3. Walks the source itself (with live progress) and reports total files
+   seen, manifest skips, and how many are new.
+4. Hands the new files to `rsync` via `--files-from` so it doesn't re-walk
+   the slow MTP mount.
+5. Records every transferred file in a manifest at
+   `~/.local/state/photo-importer/transferred.txt`. Subsequent runs skip
+   anything in the manifest, so files you've sorted/moved out of the
+   destination won't be re-pulled.
+6. Runs any configured post-sync hook commands.
 
 ## Install
 
@@ -21,10 +27,13 @@ go install codeberg.org/hum3/photo-importer@latest
 ## Usage
 
 ```sh
-photo-importer doctor          # check MTP mount, adb, destination
-photo-importer config init     # write default ~/.config/photo-importer/config.yaml
-photo-importer sync            # do the transfer
-photo-importer sync --dry-run  # preview without copying
+photo-importer doctor              # check MTP mount, adb, destination
+photo-importer config init         # write default ~/.config/photo-importer/config.yaml
+photo-importer sync                # do the transfer
+photo-importer sync --dry-run      # preview without copying
+photo-importer sync --no-manifest  # ignore the transferred-files manifest for one run
+photo-importer manifest path       # print the manifest file path
+photo-importer manifest clear      # forget what's been transferred
 ```
 
 With no arguments, `photo-importer` runs `sync`.
@@ -46,10 +55,13 @@ destination: "/home/hum3/Samsung/Internal storage/DCIM"
 # Extra rsync arguments appended to the defaults.
 rsync_args: []
 
-# Commands run after a successful sync. Each runs with these env vars set:
-#   PHOTO_IMPORTER_SOURCE, PHOTO_IMPORTER_DEST
+# Commands run after a successful sync. Each runs via `sh -c` with these
+# env vars exported:
+#   PHOTO_IMPORTER_SOURCE
+#   PHOTO_IMPORTER_DEST
+#   PHOTO_IMPORTER_FILES_TRANSFERRED
 post_sync:
-  - "echo 'sync complete:' \"$PHOTO_IMPORTER_DEST\""
+  - 'echo "sync complete: $PHOTO_IMPORTER_FILES_TRANSFERRED files into $PHOTO_IMPORTER_DEST"'
 ```
 
 ## Workflow

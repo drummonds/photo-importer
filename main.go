@@ -9,6 +9,7 @@ import (
 
 	"codeberg.org/hum3/photo-importer/internal/config"
 	"codeberg.org/hum3/photo-importer/internal/importer"
+	"codeberg.org/hum3/photo-importer/internal/manifest"
 )
 
 const version = "0.1.0"
@@ -25,6 +26,8 @@ func main() {
 		os.Exit(runDoctor())
 	case "config":
 		os.Exit(runConfig(args))
+	case "manifest":
+		os.Exit(runManifest(args))
 	case "version", "-V", "--version":
 		fmt.Println("photo-importer", version)
 	case "help", "-h", "--help":
@@ -40,9 +43,10 @@ func usage(w *os.File) {
 	fmt.Fprintf(w, `photo-importer %s
 
 Usage:
-  photo-importer [sync] [--dry-run] [-v]
+  photo-importer [sync] [--dry-run] [-v] [--no-manifest]
   photo-importer doctor
-  photo-importer config init
+  photo-importer config init|path
+  photo-importer manifest path|clear
   photo-importer version
 `, version)
 }
@@ -51,6 +55,7 @@ func runSync(args []string) int {
 	fs := flag.NewFlagSet("sync", flag.ExitOnError)
 	dryRun := fs.Bool("dry-run", false, "show what would be transferred without copying")
 	verbose := fs.Bool("v", false, "verbose rsync output")
+	noManifest := fs.Bool("no-manifest", false, "ignore the transferred-files manifest for this run")
 	_ = fs.Parse(args)
 
 	cfg, err := config.Load()
@@ -58,7 +63,7 @@ func runSync(args []string) int {
 		fmt.Fprintln(os.Stderr, "config:", err)
 		return 1
 	}
-	if err := importer.Sync(cfg, importer.Options{DryRun: *dryRun, Verbose: *verbose}); err != nil {
+	if err := importer.Sync(cfg, importer.Options{DryRun: *dryRun, Verbose: *verbose, NoManifest: *noManifest}); err != nil {
 		fmt.Fprintln(os.Stderr, "sync:", err)
 		return 1
 	}
@@ -112,6 +117,38 @@ func runConfig(args []string) int {
 		return 0
 	default:
 		fmt.Fprintf(os.Stderr, "unknown config subcommand: %s\n", args[0])
+		return 2
+	}
+}
+
+func runManifest(args []string) int {
+	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
+		fmt.Println("usage: photo-importer manifest path|clear")
+		return 2
+	}
+	switch args[0] {
+	case "path":
+		p, err := manifest.Path()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		fmt.Println(p)
+		return 0
+	case "clear":
+		p, err := manifest.Path()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		fmt.Println("cleared", p)
+		return 0
+	default:
+		fmt.Fprintf(os.Stderr, "unknown manifest subcommand: %s\n", args[0])
 		return 2
 	}
 }
