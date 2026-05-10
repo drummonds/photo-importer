@@ -240,7 +240,7 @@ func Apply(p *Plan, removeEmpty bool) ApplyResult {
 }
 
 // PrintPlan prints a human-readable summary of the plan with a sample of
-// the first `sample` sets.
+// the first `sample` sets and a per-top-level-directory breakdown.
 func PrintPlan(p *Plan, sample int) {
 	fmt.Printf("\nscanned %d file(s) totalling %s; %d skipped\n",
 		p.TotalFiles, HumanSize(p.TotalBytes), p.Skipped)
@@ -248,9 +248,12 @@ func PrintPlan(p *Plan, sample int) {
 		fmt.Println("no duplicates found")
 		return
 	}
-	fmt.Printf("found %d duplicate file(s) in %d set(s); %s would be freed\n\n",
+	fmt.Printf("found %d duplicate file(s) in %d set(s); %s would be freed\n",
 		p.TotalDups, len(p.Sets), HumanSize(p.BytesFreed))
 
+	printBreakdown(p)
+
+	fmt.Println()
 	n := min(len(p.Sets), sample)
 	for _, s := range p.Sets[:n] {
 		fmt.Printf("  keep:   %s  (%s)\n", s.Keep, HumanSize(s.Size))
@@ -262,6 +265,58 @@ func PrintPlan(p *Plan, sample int) {
 	if len(p.Sets) > sample {
 		fmt.Printf("(showing %d of %d set(s))\n", sample, len(p.Sets))
 	}
+}
+
+// printBreakdown prints two tables: where the keepers live, and where
+// the to-be-deleted files live, grouped by top-level directory under
+// the dedupe root.
+func printBreakdown(p *Plan) {
+	type stat struct {
+		count int
+		bytes int64
+	}
+	keep := map[string]*stat{}
+	del := map[string]*stat{}
+	bump := func(m map[string]*stat, key string, sz int64) {
+		s, ok := m[key]
+		if !ok {
+			s = &stat{}
+			m[key] = s
+		}
+		s.count++
+		s.bytes += sz
+	}
+	for _, s := range p.Sets {
+		bump(keep, topDir(s.Keep), s.Size)
+		for _, d := range s.Delete {
+			bump(del, topDir(d), s.Size)
+		}
+	}
+	sortedKeys := func(m map[string]*stat) []string {
+		ks := make([]string, 0, len(m))
+		for k := range m {
+			ks = append(ks, k)
+		}
+		sort.Slice(ks, func(i, j int) bool { return m[ks[i]].count > m[ks[j]].count })
+		return ks
+	}
+	fmt.Println("\nkeepers by top-level directory:")
+	for _, k := range sortedKeys(keep) {
+		s := keep[k]
+		fmt.Printf("  %6d sets  %10s  %s\n", s.count, HumanSize(s.bytes), k)
+	}
+	fmt.Println("to-delete by top-level directory:")
+	for _, k := range sortedKeys(del) {
+		s := del[k]
+		fmt.Printf("  %6d files %10s  %s\n", s.count, HumanSize(s.bytes), k)
+	}
+}
+
+func topDir(rel string) string {
+	if i := strings.IndexByte(rel, '/'); i >= 0 {
+		return rel[:i]
+	}
+	return "."
 }
 
 func HumanSize(b int64) string {
