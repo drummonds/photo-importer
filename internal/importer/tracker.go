@@ -125,9 +125,10 @@ func (t *tracker) printBanner() {
 
 	phaseRem, totalRem := t.estimate(phase, phaseElapsed, pending, filesSeen)
 
-	// Ticker prints to stderr to stay distinct from rsync's stdout
-	// progress (which can use \r-overwrite).
-	fmt.Fprintf(os.Stderr, "[eta] phase=%s  phase-elapsed=%s  total-elapsed=%s  remaining=%s  next-update=10s\n",
+	// Ticker prints to stderr (separate from stdout's rsync progress
+	// or scan transient). Leading \n ensures we start on a fresh line
+	// even if a \r-overwriting status line is mid-write on stdout.
+	fmt.Fprintf(os.Stderr, "\n[eta] phase=%s  phase-elapsed=%s  total-elapsed=%s  remaining=%s  next-update=10s\n",
 		phase, fmtDur(phaseElapsed), fmtDur(totalElapsed), fmtRemaining(totalRem, phaseRem))
 }
 
@@ -150,17 +151,11 @@ func (t *tracker) estimate(currentPhase string, currentElapsed time.Duration, pe
 			phaseEst = est
 		}
 	}
-	// Refinement for scan: scale by progress if we know past file
-	// totals (use the last successful run's FilesSeen as a guide).
-	if currentPhase == timings.PhaseScanSource && filesSeen > 0 {
-		if last := lastSuccessful(t.history); last != nil && last.FilesSeen > 0 {
-			ratio := float64(filesSeen) / float64(last.FilesSeen)
-			if ratio > 0 && ratio < 1 {
-				phaseEst = time.Duration(float64(avg[currentPhase]) / ratio * (1 - ratio))
-				phaseEst += currentElapsed // since we removed elapsed below
-			}
-		}
-	}
+	// (Previously this scaled scan estimate by ratio of files-seen to
+	// past total. That blew up when MTP was slow to wake — 1 file seen
+	// in 10s extrapolated to ~200h. Sticking with the flat average is
+	// more useful in practice; scans are short relative to rsync.)
+	_ = filesSeen
 
 	if phaseEst > currentElapsed {
 		phase = phaseEst - currentElapsed
@@ -211,15 +206,6 @@ func (t *tracker) snapshot(success bool, filesSeen int) timings.Run {
 		FilesTransferred: t.transferred,
 		Phases:           phases,
 	}
-}
-
-func lastSuccessful(runs []timings.Run) *timings.Run {
-	for i := len(runs) - 1; i >= 0; i-- {
-		if runs[i].Success {
-			return &runs[i]
-		}
-	}
-	return nil
 }
 
 func fmtDur(d time.Duration) string {
