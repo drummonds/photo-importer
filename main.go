@@ -8,11 +8,13 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"codeberg.org/hum3/photo-importer/internal/config"
 	"codeberg.org/hum3/photo-importer/internal/dedupe"
 	"codeberg.org/hum3/photo-importer/internal/importer"
 	"codeberg.org/hum3/photo-importer/internal/manifest"
+	"codeberg.org/hum3/photo-importer/internal/timings"
 )
 
 const version = "0.1.0"
@@ -33,6 +35,8 @@ func main() {
 		os.Exit(runManifest(args))
 	case "dedupe":
 		os.Exit(runDedupe(args))
+	case "timings":
+		os.Exit(runTimings(args))
 	case "version", "-V", "--version":
 		fmt.Println("photo-importer", version)
 	case "help", "-h", "--help":
@@ -53,6 +57,7 @@ Usage:
   photo-importer config init|path
   photo-importer manifest path|clear
   photo-importer dedupe [--apply] [--rm-empty] [--root=DIR] [--yes]
+  photo-importer timings [show|path|clear]
   photo-importer version
 `, version)
 }
@@ -186,6 +191,72 @@ func runDedupe(args []string) int {
 		return 1
 	}
 	return 0
+}
+
+func runTimings(args []string) int {
+	sub := "show"
+	if len(args) > 0 {
+		sub = args[0]
+	}
+	switch sub {
+	case "show", "":
+		runs, err := timings.Load()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		if len(runs) == 0 {
+			fmt.Println("no recorded runs")
+			return 0
+		}
+		fmt.Printf("%-20s  %-8s  %-3s  %7s  %7s  %s\n",
+			"start", "duration", "ok", "seen", "xferred", "phases (ms)")
+		for _, r := range runs {
+			ok := "✓"
+			if !r.Success {
+				ok = "✗"
+			}
+			fmt.Printf("%-20s  %-8s  %-3s  %7d  %7d  %s\n",
+				r.Start.Local().Format("2006-01-02 15:04:05"),
+				time.Duration(r.DurationMs*int64(time.Millisecond)).Round(time.Second),
+				ok, r.FilesSeen, r.FilesTransferred, formatPhases(r.Phases))
+		}
+		return 0
+	case "path":
+		p, err := timings.Path()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		fmt.Println(p)
+		return 0
+	case "clear":
+		p, err := timings.Path()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		fmt.Println("cleared", p)
+		return 0
+	default:
+		fmt.Fprintf(os.Stderr, "unknown timings subcommand: %s\n", sub)
+		return 2
+	}
+}
+
+func formatPhases(p map[string]int64) string {
+	order := []string{"load_manifest", "scan_source", "rsync", "update_manifest", "hooks"}
+	parts := []string{}
+	for _, k := range order {
+		if v, ok := p[k]; ok {
+			parts = append(parts, fmt.Sprintf("%s=%d", k, v))
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 func runManifest(args []string) int {

@@ -20,3 +20,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   duplicate files (size-grouping then SHA-256), and proposes to delete
   all but the shallowest copy. Dry-run by default; `--apply` deletes
   after confirmation, `--rm-empty` cleans up emptied directories.
+- Per-run timings recorded as JSONL at `$XDG_STATE_HOME/photo-importer/
+  timings.jsonl` (capped at the most recent 10 runs). Each entry has
+  start/end times, success flag, file counts, and a per-phase ms
+  breakdown for `load_manifest`, `scan_source`, `rsync`,
+  `update_manifest`, `hooks`.
+- During sync, a `[eta]` banner is printed to stderr every 10 seconds
+  with the current phase, elapsed time, and predicted remaining time
+  derived from history.
+- `timings` subcommand: `show` (default) prints a table of the last 10
+  runs; `path` and `clear` are also available.

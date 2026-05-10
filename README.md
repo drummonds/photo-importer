@@ -38,6 +38,10 @@ photo-importer manifest clear      # forget what's been transferred
 photo-importer dedupe              # dry-run: find byte-identical duplicates
 photo-importer dedupe --apply      # actually delete (asks for confirmation)
 photo-importer dedupe --root=DIR   # scan somewhere other than the destination
+
+photo-importer timings             # show the last 10 sync runs
+photo-importer timings path        # print the timings file path
+photo-importer timings clear       # forget recorded timings
 ```
 
 With no arguments, `photo-importer` runs `sync`.
@@ -82,6 +86,30 @@ removed afterwards unless `--rm-empty=false`.
 Files are first grouped by size — only files sharing a size with
 another file are hashed (SHA-256), so most of a 100 GB tree is read
 once at most.
+
+## Live ETA + timings history
+
+Each successful (or failed) sync is appended to a JSONL file at
+`$XDG_STATE_HOME/photo-importer/timings.jsonl`, capped at the most
+recent 10 runs. One JSON object per line; trivial to parse with `jq`:
+
+```sh
+jq -r '"\(.start) — \(.duration_ms/1000)s — seen=\(.files_seen)"' \
+   ~/.local/state/photo-importer/timings.jsonl
+```
+
+Each Run records the start/end times, success flag, files seen vs
+transferred, and a per-phase breakdown in milliseconds:
+`load_manifest`, `scan_source`, `rsync`, `update_manifest`, `hooks`.
+
+During every sync, a `[eta]` line is printed to stderr every 10
+seconds while a phase is in progress. It uses the average phase
+durations from past runs to estimate remaining time. With no history
+yet (first run), the banner shows elapsed time only.
+
+```
+[eta] phase=rsync  phase-elapsed=20s  total-elapsed=22s  remaining=~3m40s total (~3m20s in current phase)  next-update=10s
+```
 
 ## Workflow
 

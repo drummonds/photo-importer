@@ -15,6 +15,7 @@ import (
 	"codeberg.org/hum3/photo-importer/internal/config"
 	"codeberg.org/hum3/photo-importer/internal/manifest"
 	"codeberg.org/hum3/photo-importer/internal/mtp"
+	"codeberg.org/hum3/photo-importer/internal/timings"
 )
 
 type Options struct {
@@ -63,10 +64,27 @@ func Sync(cfg config.Config, opts Options) error {
 		return fmt.Errorf("create destination: %w", err)
 	}
 
+	history, _ := timings.Load() // best-effort; missing file → no history
+	tr := newTracker(history)
+	tr.start()
+	defer tr.stop()
+	if avg := timings.AveragePhases(history); len(avg) > 0 {
+		var totalAvg time.Duration
+		for _, d := range avg {
+			totalAvg += d
+		}
+		fmt.Printf("history: %d past run(s); typical sync takes ~%s — ETA banners every %s\n",
+			countSuccessful(history), fmtDur(totalAvg), fmtDur(tickInterval))
+	} else {
+		fmt.Printf("history: no previous runs — ETA banners every %s once one phase has finished\n", fmtDur(tickInterval))
+	}
+
+	tr.phase(timings.PhaseLoadManifest)
 	var m *manifest.Manifest
 	if !opts.NoManifest {
 		m, err = manifest.Load()
 		if err != nil {
+			persistFailure(tr, 0)
 			return fmt.Errorf("load manifest: %w", err)
 		}
 		if m.Len() > 0 {
@@ -74,9 +92,11 @@ func Sync(cfg config.Config, opts Options) error {
 		}
 	}
 
+	tr.phase(timings.PhaseScanSource)
 	fmt.Printf("scanning source: %s\n", r.Source)
-	all, dirs, manifestSkipped, err := enumerate(r, m)
+	all, dirs, manifestSkipped, err := enumerate(r, m, tr)
 	if err != nil {
+		persistFailure(tr, len(all))
 		return fmt.Errorf("enumerate source: %w", err)
 	}
 	pending := make([]string, 0, len(all)-manifestSkipped)
@@ -95,17 +115,21 @@ func Sync(cfg config.Config, opts Options) error {
 
 	if len(pending) == 0 {
 		fmt.Println("nothing to do — all files already at destination")
-		return runHooks(cfg.PostSync, r, 0)
+		tr.phase(timings.PhaseHooks)
+		err := runHooks(cfg.PostSync, r, 0)
+		persistRun(tr, err == nil, len(all))
+		return err
 	}
 
 	if opts.DryRun {
 		previewPending(pending)
-		fmt.Println("(dry-run: no files copied, manifest untouched)")
+		fmt.Println("(dry-run: no files copied, manifest untouched, timings not recorded)")
 		return nil
 	}
 
 	listFile, err := writeFilesList(pending)
 	if err != nil {
+		persistFailure(tr, len(all))
 		return fmt.Errorf("write files list: %w", err)
 	}
 	defer os.Remove(listFile)
@@ -115,28 +139,59 @@ func Sync(cfg config.Config, opts Options) error {
 	args = append(args, cfg.RsyncArgs...)
 	args = append(args, ensureSlash(r.Source), ensureSlash(r.Destination))
 
+	tr.phase(timings.PhaseRsync)
+	tr.setPending(len(pending))
 	fmt.Printf("rsync %s\n", quoted(args))
 	cmd := exec.Command("rsync", args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
+		persistFailure(tr, len(all))
 		return fmt.Errorf("rsync: %w", err)
 	}
+	tr.setTransferred(len(pending))
 
+	tr.phase(timings.PhaseUpdateManifest)
 	if m != nil {
 		added, err := m.Add(pending)
 		if err != nil {
+			persistFailure(tr, len(all))
 			return fmt.Errorf("update manifest: %w", err)
 		}
 		fmt.Printf("manifest: +%d file(s) (total %d, %s)\n", added, m.Len(), m.FilePath())
 	}
 
-	return runHooks(cfg.PostSync, r, len(pending))
+	tr.phase(timings.PhaseHooks)
+	err = runHooks(cfg.PostSync, r, len(pending))
+	persistRun(tr, err == nil, len(all))
+	return err
+}
+
+func persistRun(tr *tracker, success bool, filesSeen int) {
+	run := tr.snapshot(success, filesSeen)
+	if err := timings.Append(run); err != nil {
+		fmt.Fprintf(os.Stderr, "warn: persist timings: %v\n", err)
+	}
+}
+
+func persistFailure(tr *tracker, filesSeen int) {
+	persistRun(tr, false, filesSeen)
+}
+
+func countSuccessful(runs []timings.Run) int {
+	n := 0
+	for _, r := range runs {
+		if r.Success {
+			n++
+		}
+	}
+	return n
 }
 
 // enumerate walks the source directory, returning relative file paths and
-// counting how many are already in the manifest. Prints live progress.
-func enumerate(r Resolved, m *manifest.Manifest) (files []string, dirCount, manifestSkipped int, err error) {
+// counting how many are already in the manifest. Prints live progress
+// and updates the tracker so the 10s ETA banner can refine its estimate.
+func enumerate(r Resolved, m *manifest.Manifest, tr *tracker) (files []string, dirCount, manifestSkipped int, err error) {
 	var lastReport time.Time
 	const tick = 250 * time.Millisecond
 
@@ -161,10 +216,15 @@ func enumerate(r Resolved, m *manifest.Manifest) (files []string, dirCount, mani
 		if time.Since(lastReport) > tick {
 			fmt.Printf("\r  ... %d files seen (%d in manifest)", len(files), manifestSkipped)
 			lastReport = time.Now()
+			if tr != nil {
+				tr.setScanProgress(len(files))
+			}
 		}
 		return nil
 	})
-	// Final progress line.
+	if tr != nil {
+		tr.setScanProgress(len(files))
+	}
 	fmt.Printf("\r  ... %d files seen (%d in manifest)\n", len(files), manifestSkipped)
 	return
 }
