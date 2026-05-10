@@ -34,6 +34,10 @@ photo-importer sync --dry-run      # preview without copying
 photo-importer sync --no-manifest  # ignore the transferred-files manifest for one run
 photo-importer manifest path       # print the manifest file path
 photo-importer manifest clear      # forget what's been transferred
+
+photo-importer dedupe              # dry-run: find byte-identical duplicates
+photo-importer dedupe --apply      # actually delete (asks for confirmation)
+photo-importer dedupe --root=DIR   # scan somewhere other than the destination
 ```
 
 With no arguments, `photo-importer` runs `sync`.
@@ -63,6 +67,21 @@ rsync_args: []
 post_sync:
   - 'echo "sync complete: $PHOTO_IMPORTER_FILES_TRANSFERRED files into $PHOTO_IMPORTER_DEST"'
 ```
+
+## Dedupe
+
+`dedupe` finds byte-identical duplicate files anywhere under the
+destination tree. It's intended for cleaning up artifacts of botched
+rsync runs (e.g. a `DCIM/DCIM/...` subtree that mirrors `DCIM/...`).
+
+For each duplicate set the canonical keeper is the shallowest path
+(tie-broken lexicographically). Default is dry-run; `--apply` deletes
+after a y/N prompt (`--yes` skips the prompt). Empty directories are
+removed afterwards unless `--rm-empty=false`.
+
+Files are first grouped by size — only files sharing a size with
+another file are hashed (SHA-256), so most of a 100 GB tree is read
+once at most.
 
 ## Workflow
 

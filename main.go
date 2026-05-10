@@ -3,11 +3,14 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"codeberg.org/hum3/photo-importer/internal/config"
+	"codeberg.org/hum3/photo-importer/internal/dedupe"
 	"codeberg.org/hum3/photo-importer/internal/importer"
 	"codeberg.org/hum3/photo-importer/internal/manifest"
 )
@@ -28,6 +31,8 @@ func main() {
 		os.Exit(runConfig(args))
 	case "manifest":
 		os.Exit(runManifest(args))
+	case "dedupe":
+		os.Exit(runDedupe(args))
 	case "version", "-V", "--version":
 		fmt.Println("photo-importer", version)
 	case "help", "-h", "--help":
@@ -47,6 +52,7 @@ Usage:
   photo-importer doctor
   photo-importer config init|path
   photo-importer manifest path|clear
+  photo-importer dedupe [--apply] [--rm-empty] [--root=DIR] [--yes]
   photo-importer version
 `, version)
 }
@@ -119,6 +125,67 @@ func runConfig(args []string) int {
 		fmt.Fprintf(os.Stderr, "unknown config subcommand: %s\n", args[0])
 		return 2
 	}
+}
+
+func runDedupe(args []string) int {
+	fs := flag.NewFlagSet("dedupe", flag.ExitOnError)
+	apply := fs.Bool("apply", false, "actually delete duplicate files (default: dry-run)")
+	rmEmpty := fs.Bool("rm-empty", true, "remove emptied directories after delete")
+	rootFlag := fs.String("root", "", "directory to scan (default: destination from config)")
+	yes := fs.Bool("yes", false, "skip confirmation prompt when --apply")
+	sample := fs.Int("sample", 10, "number of duplicate sets to print as a preview")
+	_ = fs.Parse(args)
+
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "config:", err)
+		return 1
+	}
+	root := *rootFlag
+	if root == "" {
+		root = cfg.Destination
+	}
+	if root == "" {
+		fmt.Fprintln(os.Stderr, "no root: pass --root or set destination in config")
+		return 1
+	}
+	if fi, err := os.Stat(root); err != nil || !fi.IsDir() {
+		fmt.Fprintf(os.Stderr, "root not a readable directory: %s\n", root)
+		return 1
+	}
+
+	plan, err := dedupe.Build(root)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "dedupe:", err)
+		return 1
+	}
+	dedupe.PrintPlan(plan, *sample)
+
+	if !*apply {
+		if len(plan.Sets) > 0 {
+			fmt.Println("(dry-run — pass --apply to delete)")
+		}
+		return 0
+	}
+	if len(plan.Sets) == 0 {
+		return 0
+	}
+	if !*yes {
+		fmt.Printf("\nDelete %d file(s), freeing %s? [y/N] ", plan.TotalDups, dedupe.HumanSize(plan.BytesFreed))
+		ans, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+		ans = strings.TrimSpace(strings.ToLower(ans))
+		if ans != "y" && ans != "yes" {
+			fmt.Println("aborted")
+			return 1
+		}
+	}
+	res := dedupe.Apply(plan, *rmEmpty)
+	fmt.Printf("deleted %d file(s), freed %s, removed %d empty dir(s), errors: %d\n",
+		res.Deleted, dedupe.HumanSize(res.Freed), res.DirsRemoved, res.Errors)
+	if res.Errors > 0 {
+		return 1
+	}
+	return 0
 }
 
 func runManifest(args []string) int {

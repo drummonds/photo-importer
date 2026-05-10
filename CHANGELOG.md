@@ -16,3 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   transferred.txt`; subsequent syncs skip anything listed via rsync
   `--files-from`. `--no-manifest` opts out for a single run.
 - Post-sync hooks now also receive `PHOTO_IMPORTER_FILES_TRANSFERRED`.
+- `dedupe` subcommand: walks the destination, identifies byte-identical
+  duplicate files (size-grouping then SHA-256), and proposes to delete
+  all but the shallowest copy. Dry-run by default; `--apply` deletes
+  after confirmation, `--rm-empty` cleans up emptied directories.
