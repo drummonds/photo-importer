@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"codeberg.org/hum3/photo-importer/internal/timings"
+	"git.bytestone.uk/hum3/photo-importer/internal/timings"
 )
 
 // tickInterval is how often the live ETA banner is printed.

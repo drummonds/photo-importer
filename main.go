@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"codeberg.org/hum3/photo-importer/internal/config"
-	"codeberg.org/hum3/photo-importer/internal/dedupe"
-	"codeberg.org/hum3/photo-importer/internal/importer"
-	"codeberg.org/hum3/photo-importer/internal/manifest"
-	"codeberg.org/hum3/photo-importer/internal/timings"
+	"git.bytestone.uk/hum3/photo-importer/internal/config"
+	"git.bytestone.uk/hum3/photo-importer/internal/dedupe"
+	"git.bytestone.uk/hum3/photo-importer/internal/importer"
+	"git.bytestone.uk/hum3/photo-importer/internal/manifest"
+	"git.bytestone.uk/hum3/photo-importer/internal/timings"
 )
 
 const version = "0.1.0"

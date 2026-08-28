@@ -21,7 +21,7 @@ photo workflow and provides post-sync hooks for further processing.
 ## Install
 
 ```sh
-go install codeberg.org/hum3/photo-importer@latest
+go install git.bytestone.uk/hum3/photo-importer@latest
 ```
 
 ## Usage
@@ -121,5 +121,5 @@ yet (first run), the banner shows elapsed time only.
 
 ## Links
 
-- Source: https://codeberg.org/hum3/photo-importer
+- Source: https://git.bytestone.uk/hum3/photo-importer
 - Mirror: https://github.com/drummonds/photo-importer

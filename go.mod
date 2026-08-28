@@ -1,4 +1,4 @@
-module codeberg.org/hum3/photo-importer
+module git.bytestone.uk/hum3/photo-importer
 
 go 1.25
 
