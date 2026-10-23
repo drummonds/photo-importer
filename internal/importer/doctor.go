@@ -55,19 +55,11 @@ func Doctor(cfg config.Config) []Check {
 		out = append(out, Check{Name: "adb", OK: false, Detail: "not found in PATH (warning only)"})
 	}
 
-	// MTP mount
-	mounts, err := mtp.Discover()
-	switch {
-	case err != nil:
+	// MTP mount (mounting the phone via gio if gvfs lists it but has not)
+	if m, err := mtp.Acquire(os.Stderr); err != nil {
 		out = append(out, Check{Name: "mtp", OK: false, Detail: err.Error()})
-	case len(mounts) == 0:
-		out = append(out, Check{Name: "mtp", OK: false, Detail: "no MTP mount — connect phone and set USB to file transfer"})
-	default:
-		var hosts []string
-		for _, m := range mounts {
-			hosts = append(hosts, m.Host)
-		}
-		out = append(out, Check{Name: "mtp", OK: true, Detail: strings.Join(hosts, ", ")})
+	} else {
+		out = append(out, Check{Name: "mtp", OK: true, Detail: m.Host})
 	}
 
 	// Resolved source + destination
