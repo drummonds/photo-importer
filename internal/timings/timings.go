@@ -32,12 +32,16 @@ type Run struct {
 
 // Phase names. Keep stable — the predictor groups history by these.
 const (
+	PhaseDeletePhone    = "delete_phone"
 	PhaseLoadManifest   = "load_manifest"
 	PhaseScanSource     = "scan_source"
 	PhaseRsync          = "rsync"
 	PhaseUpdateManifest = "update_manifest"
 	PhaseHooks          = "hooks"
 )
+
+// PhaseOrder lists the phases in the order a sync runs them.
+var PhaseOrder = []string{PhaseDeletePhone, PhaseLoadManifest, PhaseScanSource, PhaseRsync, PhaseUpdateManifest, PhaseHooks}
 
 // Path returns the JSONL path under $XDG_STATE_HOME (or ~/.local/state).
 func Path() (string, error) {
