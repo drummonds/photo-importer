@@ -35,7 +35,7 @@ type Resolved struct {
 func Resolve(cfg config.Config) (Resolved, error) {
 	src := cfg.Source
 	if src == "" {
-		m, err := mtp.First()
+		m, err := mtp.Acquire(os.Stderr)
 		if err != nil {
 			return Resolved{}, err
 		}

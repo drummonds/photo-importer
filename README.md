@@ -74,6 +74,24 @@ post_sync:
   - 'echo "sync complete: $PHOTO_IMPORTER_FILES_TRANSFERRED files into $PHOTO_IMPORTER_DEST"'
 ```
 
+## MTP mount acquisition
+
+On GNOME the phone is mounted by gvfs on plug-in and is used as is. On KDE,
+`kiod6` (its `kmtpd` module) claims the MTP interface first, so Dolphin can
+browse the phone while gvfs cannot mount it. `sync` and `doctor` resolve
+this themselves:
+
+| gvfs mount present | MTP volume listed by `gio` | `gio mount` result | `kiod6` running | outcome |
+|---|---|---|---|---|
+| yes | - | - | - | use it |
+| no | no | - | - | error: connect phone in file-transfer mode |
+| no | yes | ok | - | use the new mount |
+| no | yes | device busy | yes | `kquitapp6 kiod6`, retry, use the mount |
+| no | yes | device busy | no | error naming the busy device |
+| no | yes | other error | - | that error |
+
+`kiod6` restarts on demand; a line on stderr says when it was quit.
+
 ## Dedupe
 
 `dedupe` finds byte-identical duplicate files anywhere under the
