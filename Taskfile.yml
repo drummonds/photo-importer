@@ -40,6 +40,16 @@ tasks:
     cmds:
       - go install .
 
+  sync:
+    desc: Run a sync from source (pass flags via CLI_ARGS, e.g. task sync -- --dry-run)
+    cmds:
+      - go run . sync {{.CLI_ARGS}}
+
+  edit:
+    desc: Run the destination editor from source and open it in the browser
+    cmds:
+      - go run . edit --open {{.CLI_ARGS}}
+
   deps:tidy:
     desc: Tidy modules
     cmds:

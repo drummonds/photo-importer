@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"git.bytestone.uk/hum3/photo-importer/internal/config"
+	"git.bytestone.uk/hum3/photo-importer/internal/deletions"
 	"git.bytestone.uk/hum3/photo-importer/internal/manifest"
 	"git.bytestone.uk/hum3/photo-importer/internal/mtp"
 	"git.bytestone.uk/hum3/photo-importer/internal/timings"
@@ -22,6 +23,10 @@ type Options struct {
 	DryRun     bool
 	Verbose    bool
 	NoManifest bool // disable manifest tracking & exclusion
+
+	// ConfirmPhoneDeletions is asked before queued files are deleted from
+	// the phone; it gets the count and a preview of paths. nil declines.
+	ConfirmPhoneDeletions func(n int, preview []string) bool
 }
 
 // Resolved holds the concrete paths used for a sync after MTP discovery.
@@ -78,6 +83,14 @@ func Sync(cfg config.Config, opts Options) error {
 	} else {
 		fmt.Printf("history: no previous runs — ETA banners every %s once one phase has finished\n", fmtDur(tickInterval))
 	}
+
+	tr.phase(timings.PhaseDeletePhone)
+	q, err := deletions.Load()
+	if err != nil {
+		persistFailure(tr, 0)
+		return fmt.Errorf("load deletion queue: %w", err)
+	}
+	applyPhoneDeletions(r.Source, q, opts.DryRun, opts.ConfirmPhoneDeletions, os.Stdout)
 
 	tr.phase(timings.PhaseLoadManifest)
 	var m *manifest.Manifest

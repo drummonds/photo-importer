@@ -6,12 +6,17 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"git.bytestone.uk/hum3/photo-importer/internal/config"
 	"git.bytestone.uk/hum3/photo-importer/internal/dedupe"
+	"git.bytestone.uk/hum3/photo-importer/internal/deletions"
+	"git.bytestone.uk/hum3/photo-importer/internal/editor"
 	"git.bytestone.uk/hum3/photo-importer/internal/importer"
 	"git.bytestone.uk/hum3/photo-importer/internal/manifest"
 	"git.bytestone.uk/hum3/photo-importer/internal/self"
@@ -36,6 +41,10 @@ func main() {
 		os.Exit(runManifest(args))
 	case "dedupe":
 		os.Exit(runDedupe(args))
+	case "edit":
+		os.Exit(runEdit(args))
+	case "deletions":
+		os.Exit(runDeletions(args))
 	case "timings":
 		os.Exit(runTimings(args))
 	case "self":
@@ -58,10 +67,12 @@ func usage(w *os.File) {
 	_, _ = fmt.Fprintf(w, `photo-importer %s
 
 Usage:
-  photo-importer [sync] [--dry-run] [-v] [--no-manifest]
+  photo-importer [sync] [--dry-run] [-v] [--no-manifest] [--yes]
   photo-importer doctor
   photo-importer config init|path
   photo-importer manifest path|clear
+  photo-importer edit [--addr=127.0.0.1:1340] [--open]
+  photo-importer deletions [list|path|clear]
   photo-importer dedupe [--apply] [--rm-empty] [--root=DIR] [--yes]
   photo-importer timings [show|path|clear]
   photo-importer self update
@@ -74,6 +85,7 @@ func runSync(args []string) int {
 	dryRun := fs.Bool("dry-run", false, "show what would be transferred without copying")
 	verbose := fs.Bool("v", false, "verbose rsync output")
 	noManifest := fs.Bool("no-manifest", false, "ignore the transferred-files manifest for this run")
+	yes := fs.Bool("yes", false, "delete queued files from the phone without prompting")
 	_ = fs.Parse(args)
 
 	cfg, err := config.Load()
@@ -81,7 +93,20 @@ func runSync(args []string) int {
 		fmt.Fprintln(os.Stderr, "config:", err)
 		return 1
 	}
-	if err := importer.Sync(cfg, importer.Options{DryRun: *dryRun, Verbose: *verbose, NoManifest: *noManifest}); err != nil {
+	confirm := func(n int, preview []string) bool {
+		for _, p := range preview {
+			fmt.Println("  ", p)
+		}
+		if n > len(preview) {
+			fmt.Printf("   ... and %d more\n", n-len(preview))
+		}
+		if *yes {
+			return true
+		}
+		return promptYes(fmt.Sprintf("Delete %d file(s) from the phone? [y/N] ", n))
+	}
+	opts := importer.Options{DryRun: *dryRun, Verbose: *verbose, NoManifest: *noManifest, ConfirmPhoneDeletions: confirm}
+	if err := importer.Sync(cfg, opts); err != nil {
 		fmt.Fprintln(os.Stderr, "sync:", err)
 		return 1
 	}
@@ -182,14 +207,9 @@ func runDedupe(args []string) int {
 	if len(plan.Sets) == 0 {
 		return 0
 	}
-	if !*yes {
-		fmt.Printf("\nDelete %d file(s), freeing %s? [y/N] ", plan.TotalDups, dedupe.HumanSize(plan.BytesFreed))
-		ans, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-		ans = strings.TrimSpace(strings.ToLower(ans))
-		if ans != "y" && ans != "yes" {
-			fmt.Println("aborted")
-			return 1
-		}
+	if !*yes && !promptYes(fmt.Sprintf("\nDelete %d file(s), freeing %s? [y/N] ", plan.TotalDups, dedupe.HumanSize(plan.BytesFreed))) {
+		fmt.Println("aborted")
+		return 1
 	}
 	res := dedupe.Apply(plan, *rmEmpty)
 	fmt.Printf("deleted %d file(s), freed %s, removed %d empty dir(s), errors: %d\n",
@@ -256,9 +276,8 @@ func runTimings(args []string) int {
 }
 
 func formatPhases(p map[string]int64) string {
-	order := []string{"load_manifest", "scan_source", "rsync", "update_manifest", "hooks"}
 	parts := []string{}
-	for _, k := range order {
+	for _, k := range timings.PhaseOrder {
 		if v, ok := p[k]; ok {
 			parts = append(parts, fmt.Sprintf("%s=%d", k, v))
 		}
@@ -294,6 +313,105 @@ func runManifest(args []string) int {
 		return 0
 	default:
 		fmt.Fprintf(os.Stderr, "unknown manifest subcommand: %s\n", args[0])
+		return 2
+	}
+}
+
+// promptYes prints prompt and reads one line from stdin; only "y"/"yes" is true.
+func promptYes(prompt string) bool {
+	fmt.Print(prompt)
+	ans, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	ans = strings.TrimSpace(strings.ToLower(ans))
+	return ans == "y" || ans == "yes"
+}
+
+func runEdit(args []string) int {
+	fs := flag.NewFlagSet("edit", flag.ExitOnError)
+	addr := fs.String("addr", "127.0.0.1:1340", "listen address")
+	open := fs.Bool("open", false, "open the editor in the default browser (xdg-open)")
+	_ = fs.Parse(args)
+
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "config:", err)
+		return 1
+	}
+	if cfg.Destination == "" {
+		fmt.Fprintln(os.Stderr, "destination is empty — run `photo-importer config init` and edit the file")
+		return 1
+	}
+	q, err := deletions.Load()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "deletion queue:", err)
+		return 1
+	}
+	cacheRoot, err := os.UserCacheDir()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	ed, err := editor.New(cfg.Destination, q, filepath.Join(cacheRoot, "photo-importer", "thumbs"))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "edit:", err)
+		return 1
+	}
+	url := "http://" + *addr + "/"
+	fmt.Printf("editing %s\nopen %s (Ctrl-C to stop)\n", cfg.Destination, url)
+	if *open {
+		if err := exec.Command("xdg-open", url).Start(); err != nil {
+			fmt.Fprintln(os.Stderr, "warn: xdg-open:", err)
+		}
+	}
+	if err := http.ListenAndServe(*addr, ed.Handler()); err != nil { //nolint:gosec // local tool, no timeouts needed
+		fmt.Fprintln(os.Stderr, "edit:", err)
+		return 1
+	}
+	return 0
+}
+
+func runDeletions(args []string) int {
+	sub := "list"
+	if len(args) > 0 {
+		sub = args[0]
+	}
+	switch sub {
+	case "list":
+		q, err := deletions.Load()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		if q.Len() == 0 {
+			fmt.Println("deletion queue is empty")
+			return 0
+		}
+		for _, p := range q.Paths() {
+			fmt.Println(p)
+		}
+		fmt.Fprintf(os.Stderr, "%d file(s) queued for deletion from the phone on the next sync\n", q.Len())
+		return 0
+	case "path":
+		p, err := deletions.Path()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		fmt.Println(p)
+		return 0
+	case "clear":
+		p, err := deletions.Path()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		fmt.Println("cleared", p)
+		return 0
+	default:
+		fmt.Fprintf(os.Stderr, "unknown deletions subcommand: %s\n", sub)
 		return 2
 	}
 }
