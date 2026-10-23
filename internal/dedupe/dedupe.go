@@ -169,7 +169,7 @@ func hashFile(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // read-only file
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return "", err
@@ -313,8 +313,8 @@ func printBreakdown(p *Plan) {
 }
 
 func topDir(rel string) string {
-	if i := strings.IndexByte(rel, '/'); i >= 0 {
-		return rel[:i]
+	if before, _, ok := strings.Cut(rel, "/"); ok {
+		return before
 	}
 	return "."
 }

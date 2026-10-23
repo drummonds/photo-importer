@@ -4,6 +4,7 @@ tasks:
   fmt:
     desc: Format Go source
     cmds:
+      - go fix ./...
       - go fmt ./...
 
   vet:
@@ -16,11 +17,17 @@ tasks:
     cmds:
       - go test ./...
 
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run ./...
+
   check:
-    desc: fmt + vet + test
+    desc: fmt + vet + lint + test
     cmds:
       - task: fmt
       - task: vet
+      - task: lint
       - task: test
 
   build:

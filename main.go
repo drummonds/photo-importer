@@ -14,6 +14,7 @@ import (
 	"git.bytestone.uk/hum3/photo-importer/internal/dedupe"
 	"git.bytestone.uk/hum3/photo-importer/internal/importer"
 	"git.bytestone.uk/hum3/photo-importer/internal/manifest"
+	"git.bytestone.uk/hum3/photo-importer/internal/self"
 	"git.bytestone.uk/hum3/photo-importer/internal/timings"
 )
 
@@ -37,6 +38,11 @@ func main() {
 		os.Exit(runDedupe(args))
 	case "timings":
 		os.Exit(runTimings(args))
+	case "self":
+		if err := self.Run(args, version); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	case "version", "-V", "--version":
 		fmt.Println("photo-importer", version)
 	case "help", "-h", "--help":
@@ -49,7 +55,7 @@ func main() {
 }
 
 func usage(w *os.File) {
-	fmt.Fprintf(w, `photo-importer %s
+	_, _ = fmt.Fprintf(w, `photo-importer %s
 
 Usage:
   photo-importer [sync] [--dry-run] [-v] [--no-manifest]
@@ -58,6 +64,7 @@ Usage:
   photo-importer manifest path|clear
   photo-importer dedupe [--apply] [--rm-empty] [--root=DIR] [--yes]
   photo-importer timings [show|path|clear]
+  photo-importer self update
   photo-importer version
 `, version)
 }

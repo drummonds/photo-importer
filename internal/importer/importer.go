@@ -132,7 +132,7 @@ func Sync(cfg config.Config, opts Options) error {
 		persistFailure(tr, len(all))
 		return fmt.Errorf("write files list: %w", err)
 	}
-	defer os.Remove(listFile)
+	defer os.Remove(listFile) //nolint:errcheck // best-effort temp cleanup
 
 	args := defaultRsyncArgs(opts)
 	args = append(args, "--files-from="+listFile)
@@ -234,14 +234,18 @@ func writeFilesList(paths []string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
 	w := bufio.NewWriter(f)
 	for _, p := range paths {
 		if _, err := fmt.Fprintln(w, p); err != nil {
+			_ = f.Close()
 			return "", err
 		}
 	}
 	if err := w.Flush(); err != nil {
+		_ = f.Close()
+		return "", err
+	}
+	if err := f.Close(); err != nil {
 		return "", err
 	}
 	return f.Name(), nil

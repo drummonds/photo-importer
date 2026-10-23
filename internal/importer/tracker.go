@@ -24,9 +24,9 @@ type tracker struct {
 	phaseName   string
 	phaseStart  time.Time
 	completed   map[string]time.Duration
-	pending     int  // for rsync ETA refinement
-	filesSeen   int  // for scan ETA refinement
-	transferred int  // for the final Run record
+	pending     int // for rsync ETA refinement
+	filesSeen   int // for scan ETA refinement
+	transferred int // for the final Run record
 
 	stopCh chan struct{}
 	wg     sync.WaitGroup
