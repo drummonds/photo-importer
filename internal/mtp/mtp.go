@@ -39,15 +39,3 @@ func Discover() ([]Mount, error) {
 	sort.Slice(out, func(i, j int) bool { return out[i].Host < out[j].Host })
 	return out, nil
 }
-
-// First returns the first MTP mount, or an error if none are present.
-func First() (Mount, error) {
-	mounts, err := Discover()
-	if err != nil {
-		return Mount{}, err
-	}
-	if len(mounts) == 0 {
-		return Mount{}, fmt.Errorf("no MTP mount found under /run/user/%d/gvfs/ — connect phone and set USB to file transfer mode", os.Getuid())
-	}
-	return mounts[0], nil
-}
