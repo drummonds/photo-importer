@@ -12,6 +12,8 @@ photo workflow and provides post-sync hooks for further processing.
    seen, manifest skips, and how many are new.
 4. Hands the new files to `rsync` via `--files-from` so it doesn't re-walk
    the slow MTP mount.
+7. Before scanning, deletes from the phone any photos you removed in the
+   editor (`photo-importer edit`), after telling you how many and asking.
 5. Records every transferred file in a manifest at
    `~/.local/state/photo-importer/transferred.txt`. Subsequent runs skip
    anything in the manifest, so files you've sorted/moved out of the
@@ -34,6 +36,11 @@ photo-importer config init         # write default ~/.config/photo-importer/conf
 photo-importer sync                # do the transfer
 photo-importer sync --dry-run      # preview without copying
 photo-importer sync --no-manifest  # ignore the transferred-files manifest for one run
+photo-importer sync --yes          # delete queued photos from the phone without asking
+photo-importer edit                # web editor over the destination at http://127.0.0.1:1340/
+photo-importer edit --open         # ... and open it in the browser
+photo-importer deletions           # list photos queued for deletion from the phone
+photo-importer deletions clear     # forget the queue (photos stay on the phone)
 photo-importer manifest path       # print the manifest file path
 photo-importer manifest clear      # forget what's been transferred
 
@@ -91,6 +98,36 @@ this themselves:
 | no | yes | other error | - | that error |
 
 `kiod6` restarts on demand; a line on stderr says when it was quit.
+
+## Editor and deletion queue
+
+`photo-importer edit` serves a local web editor over the destination
+tree (lofigui: plain HTML forms, no JavaScript). Browse a directory as a
+thumbnail grid, newest first, tick the photos you don't want and press
+**Delete selected**. Each deletion:
+
+1. queues the destination-relative path in
+   `~/.local/state/photo-importer/deletion-queue.txt`, then
+2. removes the local file.
+
+The queue is written first so a photo deleted locally can never silently
+survive on the phone. The next `sync` reports how many queued photos are
+still on the phone and asks before deleting them (`--yes` skips the
+prompt; `--dry-run` only reports). Deleted and already-absent entries are
+removed from the queue; failed deletions stay queued for the next run.
+
+| queue entry | on phone | sync action | queue afterwards |
+|---|---|---|---|
+| any | - | `--dry-run`: report only | unchanged |
+| present | yes | ask; on yes `rm` from phone | removed |
+| present | yes | ask; on no skip | kept |
+| present | yes | `rm` fails | kept, warning |
+| absent | no | nothing to do | removed |
+
+Thumbnails (256 px, EXIF orientation applied) are cached under
+`~/.cache/photo-importer/thumbs/`; the first view of a page of 50 MP
+photos takes a few seconds, later views are instant. Videos show a
+placeholder tile; **open** shows the original in a new tab.
 
 ## Dedupe
 

@@ -164,13 +164,7 @@ func (t *tracker) estimate(currentPhase string, currentElapsed time.Duration, pe
 	// Total remaining = phase remaining + sum of avg for phases not yet
 	// completed and not the current one.
 	total = phase
-	order := []string{
-		timings.PhaseLoadManifest,
-		timings.PhaseScanSource,
-		timings.PhaseRsync,
-		timings.PhaseUpdateManifest,
-		timings.PhaseHooks,
-	}
+	order := timings.PhaseOrder
 	currentIdx := -1
 	for i, p := range order {
 		if p == currentPhase {
