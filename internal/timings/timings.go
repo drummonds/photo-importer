@@ -20,12 +20,12 @@ const MaxRuns = 10
 
 // Run records one sync invocation.
 type Run struct {
-	Start            time.Time        `json:"start"`
-	End              time.Time        `json:"end"`
-	DurationMs       int64            `json:"duration_ms"`
-	Success          bool             `json:"success"`
-	FilesSeen        int              `json:"files_seen"`
-	FilesTransferred int              `json:"files_transferred"`
+	Start            time.Time `json:"start"`
+	End              time.Time `json:"end"`
+	DurationMs       int64     `json:"duration_ms"`
+	Success          bool      `json:"success"`
+	FilesSeen        int       `json:"files_seen"`
+	FilesTransferred int       `json:"files_transferred"`
 	// Phases maps phase name → milliseconds spent in that phase.
 	Phases map[string]int64 `json:"phases"`
 }
@@ -65,7 +65,7 @@ func Load() ([]Run, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // read-only file
 	var runs []Run
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 64*1024), 4*1024*1024)
@@ -111,18 +111,18 @@ func writeAll(runs []Run) error {
 	enc := json.NewEncoder(w)
 	for _, r := range runs {
 		if err := enc.Encode(r); err != nil {
-			tmp.Close()
-			os.Remove(tmp.Name())
+			_ = tmp.Close()
+			_ = os.Remove(tmp.Name())
 			return err
 		}
 	}
 	if err := w.Flush(); err != nil {
-		tmp.Close()
-		os.Remove(tmp.Name())
+		_ = tmp.Close()
+		_ = os.Remove(tmp.Name())
 		return err
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmp.Name())
+		_ = os.Remove(tmp.Name())
 		return err
 	}
 	return os.Rename(tmp.Name(), p)

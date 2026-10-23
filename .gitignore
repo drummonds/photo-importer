@@ -4,3 +4,8 @@
 *.test
 *.out
 .vscode/
+.task
+.claude/
+.tp-release-comment
+.tp-release-inflight
+.tp-release.yml

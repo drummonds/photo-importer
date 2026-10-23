@@ -1,11 +1,11 @@
-project_type: binary
-name: photo-importer
+type: binary
 install: true
-remotes:
-  - origin
-  - github
-checks:
-  - task fmt
-  - task vet
-  - task test
+check: [task check]
 changelog_format: keepachangelog
+remotes:
+  - name: origin
+    forge: forgejo
+    token_env: BYTESTONE_FORGEJO_TOKEN
+  - github
+maturity:
+  code: 1

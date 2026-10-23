@@ -1,0 +1,37 @@
+version: 2
+project_name: photo-importer
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: .
+    binary: photo-importer
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - formats:
+      - tar.gz
+
+gitea_urls:
+  api: https://git.bytestone.uk/api/v1
+  download: https://git.bytestone.uk
+
+release:
+  gitea:
+    owner: hum3
+    name: photo-importer
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"

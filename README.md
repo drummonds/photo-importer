@@ -24,6 +24,8 @@ photo workflow and provides post-sync hooks for further processing.
 go install git.bytestone.uk/hum3/photo-importer@latest
 ```
 
+Later, `photo-importer self update` reinstalls the latest release.
+
 ## Usage
 
 ```sh

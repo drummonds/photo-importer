@@ -44,7 +44,7 @@ func Load() (*Manifest, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // read-only file
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 64*1024), 4*1024*1024)
 	for sc.Scan() {
@@ -74,19 +74,19 @@ func (m *Manifest) Add(paths []string) (added int, err error) {
 	if err != nil {
 		return 0, err
 	}
-	defer f.Close()
 	sort.Strings(paths)
 	for _, p := range paths {
 		if _, ok := m.paths[p]; ok {
 			continue
 		}
 		if _, err := fmt.Fprintln(f, p); err != nil {
+			_ = f.Close()
 			return added, err
 		}
 		m.paths[p] = struct{}{}
 		added++
 	}
-	return added, nil
+	return added, f.Close()
 }
 
 // WriteExcludeFile writes the manifest paths in rsync exclude-from format
@@ -101,7 +101,6 @@ func (m *Manifest) WriteExcludeFile() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
 	paths := make([]string, 0, len(m.paths))
 	for p := range m.paths {
 		paths = append(paths, p)
@@ -110,10 +109,15 @@ func (m *Manifest) WriteExcludeFile() (string, error) {
 	w := bufio.NewWriter(f)
 	for _, p := range paths {
 		if _, err := fmt.Fprintln(w, "/"+p); err != nil {
+			_ = f.Close()
 			return "", err
 		}
 	}
 	if err := w.Flush(); err != nil {
+		_ = f.Close()
+		return "", err
+	}
+	if err := f.Close(); err != nil {
 		return "", err
 	}
 	return f.Name(), nil
