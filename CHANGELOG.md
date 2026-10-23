@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-23
+
+ - `photo-importer edit`: a local web editor over the destination; tick photos and delete them. Deletions are queued and removed from the phone on the next `sync` after it reports the count and asks (`--yes` skips the prompt). `deletions list|path|clear` inspects the queue.
+
+### Added
+
+- `photo-importer edit`: a local web editor over the destination; tick photos and delete them. Deletions are queued and removed from the phone on the next `sync` after it reports the count and asks (`--yes` skips the prompt). `deletions list|path|clear` inspects the queue. (#15)
+
 ## [0.2.0] - 2026-10-23
 
  - On KDE, `sync` and `doctor` acquire the MTP mount themselves: when gvfs lists the phone as a volume but kiod6's kmtpd holds the device, they quit kiod6 (it restarts on demand) and mount via `gio`. GNOME's plug-in gvfs mount is used as before.
